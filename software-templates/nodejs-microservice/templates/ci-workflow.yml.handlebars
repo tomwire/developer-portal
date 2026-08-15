@@ -1,0 +1,102 @@
+# =============================================================================
+# Scaffold Output — GitHub Actions CI/CD Workflow Template
+# =============================================================================
+# This workflow runs in every scaffolded service repository.
+# Uses the same conventions as the Developer Portal workflows:
+# - Portfolio mode (succeeds without AWS creds)
+# - ECR push conditional on AWS_ROLE_ARN secret
+# =============================================================================
+
+name: CI — <%= serviceName %>
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-test:
+    name: Build, Test & Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      <%- if (includeLinting) { %>
+      - name: Lint
+        run: npx eslint src/ --max-warnings=0
+        <%- } %>
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npm test -- --coverage
+
+      # Portfolio mode — build locally without AWS credentials
+      - name: Build Docker image (local)
+        id: build-local
+        run: |
+          docker build \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            -t <%= serviceName %>:<%= github.sha %> \
+            .
+
+      <%- if (includeSecurityScan) { %>
+      - name: Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: docker.io/library/<%= serviceName %>:<%= github.sha %>
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+      <%- } %>
+
+      # Conditional ECR push — only when AWS credentials configured
+      - name: Configure AWS credentials for ECR
+        id: aws-auth
+        if: secrets.AWS_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-2
+
+      - name: Login to Amazon ECR
+        if: steps.aws-auth.outcome == 'success'
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Push to ECR
+        if: steps.aws-auth.outcome == 'success'
+        run: |
+          REGISTRY=${{ steps.login-ecr.outputs.registry }}
+          docker tag <%= serviceName %>:<%= github.sha %> $REGISTRY/<%= serviceName %>:<%= github.sha %>
+          docker push $REGISTRY/<%= serviceName %>:<%= github.sha %>
+
+      # Output for CD workflows
+      - name: Set step outputs
+        id: meta
+        run: |
+          if [[ "${{ steps.aws-auth.outcome }}" == "success" ]]; then
+            echo "pushed=true" >> $GITHUB_OUTPUT
+          else
+            echo "pushed=false" >> $GITHUB_OUTPUT
+          fi

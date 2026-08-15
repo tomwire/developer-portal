@@ -1,0 +1,60 @@
+# =============================================================================
+# Scaffold Output — Makefile (for every scaffolded service)
+# =============================================================================
+
+SHELL := /bin/bash
+IMAGE_NAME ?= <%= serviceName %>
+NAMESPACE  ?= idp-dev
+
+.PHONY: build test lint docker:build docker:push deploy:dev destroy clean help
+
+##@ General
+
+help: ## Show this help
+	@grep -E '^[a-zA-Z_-]+:' $(MAKEFILE_LIST) \
+		| awk '{print "  $$1"}'
+
+.DEFAULT_GOAL := help
+
+##@ Build & Test
+
+build: ## Build the application
+	npm run build
+
+test: ## Run all tests
+	npm test
+
+lint: ## Lint code
+	npx eslint src/ --max-warnings=0
+
+format: ## Format code
+	npx prettier --write "**/*.{ts,tsx,json}"
+
+##@ Docker
+
+docker:build: ## Build Docker image
+	docker build -t $(IMAGE_NAME):$(shell git rev-parse --short HEAD) .
+
+docker:push: docker:build ## Build and push to ECR (requires AWS creds)
+	aws ecr get-login-password | docker login --username AWS \
+		--password-stdin public.ecr.aws/tomwire
+	docker tag $(IMAGE_NAME):$(shell git rev-parse --short HEAD) \
+		public.ecr.aws/tomwire/$(IMAGE_NAME):$(shell git rev-parse --short HEAD)
+	docker push public.ecr.aws/tomwire/$(IMAGE_NAME):$(shell git rev-parse --short HEAD)
+
+##@ Deploy
+
+deploy:dev: ## Deploy to dev namespace via kubectl
+	kubectl apply -k k8s-manifests/overlays/dev/ \
+		-n $(NAMESPACE)
+	kubectl rollout status deployment/$(IMAGE_NAME) \
+		-n $(NAMESPACE) --timeout=300s
+
+##@ Cleanup
+
+destroy: ## Delete from dev namespace
+	kubectl delete -k k8s-manifests/overlays/dev/ \
+		-n $(NAMESPACE) 2>/dev/null || true
+
+clean: ## Clean build artifacts
+	rm -rf node_modules app/node_modules dist

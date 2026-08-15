@@ -1,0 +1,177 @@
+# =============================================================================
+# Developer Portal — Drift Detection (Scheduled + Manual)
+# =============================================================================
+name: Drift Detection — Platform Infrastructure
+
+on:
+  schedule:
+    # Check every 6 hours
+    - cron: '0 */6 * * *'
+  workflow_dispatch:  # Manual trigger for on-demand checks
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: "us-east-2"
+
+jobs:
+  detect-drift:
+    name: Detect Platform Drift
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [dev, staging, prod]
+    steps:
+      - uses: actions/checkout@v4
+
+      # Only run drift detection when AWS credentials are configured
+      - name: Check credentials availability
+        id: check-creds
+        run: |
+          if [[ "${{ secrets.AWS_ROLE_ARN }}" == "" ]]; then
+            echo "⚠️ No AWS_ROLE_ARN — skipping drift detection (portfolio mode)"
+            echo "set=false" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Credentials available, running drift check"
+            echo "set=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup kubectl
+        if: steps.check-creds.outputs.set == 'true'
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Configure AWS credentials
+        if: steps.check-creds.outputs.set == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig for EKS
+        if: steps.check-creds.outputs.set == 'true'
+        run: |
+          CLUSTER_NAME="eks-${{ matrix.environment }}-idp"
+          aws eks update-kubeconfig --name $CLUSTER_NAME \
+            --region ${{ env.AWS_REGION }} --alias eks-${{ matrix.environment }}
+
+      - name: Check namespace existence
+        if: steps.check-creds.outputs.set == 'true'
+        id: ns-check
+        run: |
+          NS="idp-${{ matrix.environment }}"
+          if kubectl get namespace "$NS" >/dev/null 2>&1; then
+            echo "namespace_exists=true" >> $GITHUB_OUTPUT
+            echo "✅ Namespace ${NS} exists"
+          else
+            echo "namespace_exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Namespace ${NS} not found — skipping drift check"
+          fi
+
+      - name: Get live Backstage deployment state
+        if: steps.check-creds.outputs.set == 'true' && steps.ns-check.outputs.namespace_exists == 'true'
+        run: |
+          kubectl get deployment backstage \
+            -n idp-${{ matrix.environment }} \
+            -o yaml > /tmp/live-backstage.yaml 2>/dev/null || true
+
+      - name: Build desired state from Git overlay
+        if: steps.check-creds.outputs.set == 'true' && steps.ns-check.outputs.namespace_exists == 'true'
+        id: build
+        run: |
+          OVERLAY="environments/${{ matrix.environment }}"
+          if kustomize build "$OVERLAY" > /tmp/desired.yaml 2>/dev/null; then
+            echo "built=true" >> $GITHUB_OUTPUT
+            echo "✅ Built desired state from overlay"
+          else
+            echo "built=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Overlay has unresolvable placeholders — using base for drift check"
+            kustomize build k8s-manifests/base > /tmp/desired.yaml 2>/dev/null || true
+          fi
+
+      - name: Compare desired vs live (drift detection)
+        if: steps.check-creds.outputs.set == 'true' && steps.ns-check.outputs.namespace_exists == 'true'
+        id: diff
+        run: |
+          DESIRED="/tmp/desired.yaml"
+          LIVE="/tmp/live-backstage.yaml"
+
+          if [ ! -f "$DESIRED" ] || [ ! -f "$LIVE" ]; then
+            echo "drift_found=false" >> $GITHUB_OUTPUT
+            echo "Skipping — missing manifest or namespace state"
+            exit 0
+          fi
+
+          # Compare replica counts
+          DESIRED_REPLICAS=$(grep -A1 'replicas:' "$DESIRED" \
+            | grep -oP '\d+' | head -1 || echo 0)
+          LIVE_REPLICAS=$(grep -A1 'replicas:' "$LIVE" \
+            | grep -oP '\d+' | head -1 || echo 0)
+
+          if [ "$DESIRED_REPLICAS" != "$LIVE_REPLICAS" ]; then
+            echo "🚨 DRIFT DETECTED: Replica mismatch in ${{ matrix.environment }}"
+            echo "Desired: ${DESIRED_REPLICAS}, Live: ${LIVE_REPLICAS}"
+
+            kubectl diff -n idp-${{ matrix.environment }} \
+              -f "$DESIRED" 2>/dev/null > /tmp/drift-report.txt || true
+
+            echo "drift_found=true" >> $GITHUB_OUTPUT
+          else
+            # Check image tags
+            DESIRED_IMAGE=$(grep 'image:' "$DESIRED" | tail -1 \
+              | awk '{print $NF}' || echo "")
+            LIVE_IMAGE=$(grep 'image:' "$LIVE" | tail -1 \
+              | awk '{print $NF}' || echo "")
+
+            if [ "$DESIRED_IMAGE" != "$LIVE_IMAGE" ]; then
+              echo "🚨 DRIFT DETECTED: Image mismatch in ${{ matrix.environment }}"
+              echo "Desired: ${DESIRED_IMAGE}"
+              echo "Live: ${LIVE_IMAGE}"
+              kubectl diff -n idp-${{ matrix.environment }} \
+                -f "$DESIRED" > /tmp/drift-report.txt 2>&1 || true
+              echo "drift_found=true" >> $GITHUB_OUTPUT
+            else
+              echo "✅ No drift detected in ${{ matrix.environment }}"
+              echo "drift_found=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Report drift findings
+        if: steps.check-creds.outputs.set == 'true' && steps.diff.outputs.drift_found == 'true'
+        run: |
+          echo "## Drift Detected — ${{ matrix.environment }}" > drift-report.md
+          echo "" >> drift-report.md
+          echo "**Environment:** ${{ matrix.environment }}" >> drift-report.md
+          echo "" >> drift-report.md
+          echo "### Diff Output" >> drift-report.md
+          echo '```yaml' >> drift-report.md
+          cat /tmp/drift-report.txt >> drift-report.md 2>/dev/null || true
+          echo '```' >> drift-report.md
+
+          echo "### Resolution" >> drift-report.md
+          echo "1. If intentional: update Git overlay to match live state" >> drift-report.md
+          echo "2. If unintentional: sync from ArgoCD or run `kubectl apply -k environments/${{ matrix.environment }}`" >> drift-report.md
+
+      - name: Create issue on drift (dev only)
+        if: steps.check-creds.outputs.set == 'true' && steps.diff.outputs.drift_found == 'true' \
+          && matrix.environment == 'dev'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚨 Drift detected in ${{ matrix.environment }} environment`,
+              body: [
+                "Auto-detected at: ${new Date().toISOString()}",
+                "",
+                "### Immediate Actions",
+                "- Review the kubectl diff output in the workflow logs",
+                "- If drift is unintentional, sync from Git: `kubectl apply -k environments/${{ matrix.environment }}`",
+                "- If drift is intentional (emergency fix), update the overlay to match"
+              ].join('\n')
+            });

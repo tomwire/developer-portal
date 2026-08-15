@@ -1,0 +1,148 @@
+# =============================================================================
+# Node.js Microservice Software Template
+# =============================================================================
+# When a developer selects this template in Backstage, they fill out:
+#   - Service name
+#   - Description  
+#   - Owner (GitHub user/team)
+#   - Port number
+#   - API path prefix
+#
+# The scaffolder then:
+# 1. Fetches the template from templates/nodejs-microservice/
+# 2. Substitutes values in all files
+# 3. Creates a new GitHub repo with the scaffolded code
+# 4. Registers the service in the Backstage catalog
+# =============================================================================
+
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: nodejs-microservice
+  title: Node.js Microservice
+  description: Create a new production-ready Node.js microservice with TypeScript, Express/Fastify, Dockerfile, K8s manifests, Terraform module, and full CI/CD pipeline.
+  tags: [nodejs, typescript, microservice, api]
+
+spec:
+  owner: platform-team
+  type: service
+
+  # ---------------------------------------------------------------------------
+  # Parameters — form fields shown to the developer in Backstage UI
+  # ---------------------------------------------------------------------------
+  parameters:
+    - title: Provide basic information
+      required: [serviceName, description, owner, port, apiPrefix]
+      properties:
+        serviceName:
+          title: Service Name
+          type: string
+          description: Unique name for your microservice (e.g., order-service-api)
+          pattern: '^[a-z][a-z0-9-]*[a-z0-9]$'
+          ui:autofocus: true
+        description:
+          title: Description
+          type: string
+          description: Brief description of what this service does
+        owner:
+          title: Owner
+          type: string
+          description: GitHub user or team that owns this service (e.g., platform-team)
+        port:
+          title: Port Number
+          type: integer
+          description: The port the service listens on
+          default: 3000
+        apiPrefix:
+          title: API Path Prefix
+          type: string
+          description: Base path for all API routes (e.g., /api/v1/orders)
+
+    - title: Choose additional features
+      required: []
+      properties:
+        includeDocker:
+          title: Dockerfile
+          type: boolean
+          description: Include a multi-stage Dockerfile with distroless runtime
+          default: true
+        includeTerraform:
+          title: Terraform Module
+          type: boolean
+          description: Include a Terraform module for Kubernetes namespace & IAM role
+          default: true
+        includeKustomize:
+          title: Kustomize Overlays
+          type: boolean
+          description: Include dev/staging/prod Kustomize overlays
+          default: true
+
+    - title: Select CI/CD configuration
+      required: []
+      properties:
+        ciProvider:
+          title: CI Provider
+          type: string
+          enum: [github]
+          default: github
+          description: Source control and CI provider
+        includeLinting:
+          title: ESLint + Prettier
+          type: boolean
+          description: Include linting and formatting workflows
+          default: true
+        includeSecurityScan:
+          title: Trivy Vulnerability Scan
+          type: boolean
+          description: Include container image scanning in CI pipeline
+          default: true
+
+  # ---------------------------------------------------------------------------
+  # Steps — actions the scaffolder executes to create the service
+  # ---------------------------------------------------------------------------
+  steps:
+    # Step 1: Fetch the base template and apply parameter substitutions
+    - id: fetch-base
+      name: Fetch Base Template
+      action: fetch:template
+      input:
+        url: ./templates/nodejs-microservice
+        values:
+          serviceName: ${{ parameters.serviceName }}
+          description: ${{ parameters.description }}
+          owner: ${{ parameters.owner }}
+          port: ${{ parameters.port }}
+          apiPrefix: ${{ parameters.apiPrefix }}
+          includeDocker: ${{ parameters.includeDocker }}
+          includeTerraform: ${{ parameters.includeTerraform }}
+          includeKustomize: ${{ parameters.includeKustomize }}
+
+    # Step 2: Create the GitHub repository with the scaffolded code
+    - id: publish
+      name: Publish to GitHub
+      action: publish:github
+      input:
+        allowedHosts: ['github.com']
+        description: This service was scaffolded from the Developer Portal.
+        repoUrl: github.com?owner=tomwire&repo=${{ parameters.serviceName }}
+
+    # Step 3: Create the Backstage catalog entity in the new repo
+    - id: register
+      name: Register Service in Catalog
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps.publish.output.repoContentsUrl }}
+        catalogInfoPath: 'catalog-info.yaml'
+
+  # ---------------------------------------------------------------------------
+  # Output — links and info shown to the developer after completion
+  # ---------------------------------------------------------------------------
+  output:
+    links:
+      - title: Repository
+        url: ${{ steps.publish.output.remoteUrl }}
+      - title: Open in Catalog
+        to: ${{ steps.register.output.catalogRef }}
+      - title: View ArgoCD Application (dev)
+        icon: kubernetes
+        url: http://localhost:8080/dashboards?application=order-service-api-dev

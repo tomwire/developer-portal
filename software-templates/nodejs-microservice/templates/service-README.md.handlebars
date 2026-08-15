@@ -1,0 +1,58 @@
+# <%= description %>
+
+A <%= serviceName %> microservice — part of the Internal Developer Platform.
+
+- **Owner:** `<%= owner %>`
+- **Port:** `<%= port %>`
+- **API Path:** `<%= apiPrefix %>`
+
+## Getting Started
+
+```bash
+# Install dependencies
+npm install
+
+# Run locally
+npm start
+
+# Build Docker image
+npm run docker:build
+
+# Deploy to dev (requires kubectl configured)
+npm run deploy:dev
+```
+
+## Architecture
+
+This service follows the **golden path** established by the platform team:
+
+| Layer | Technology |
+|-------|-----------|
+| Runtime | Node.js 20 LTS (Alpine) |
+| Framework | Fastify (HTTP/JSON API) |
+| Build | TypeScript 5.4+ |
+| Container | Multi-stage → Distroless |
+| CI/CD | GitHub Actions → ECR → ArgoCD |
+| Observability | OpenTelemetry auto-instrumentation |
+| Infra | Terraform (EKS namespace, IAM) |
+
+## Directory Structure
+
+```
+.
+├── src/                    # Application source code
+│   ├── index.ts            # Entry point
+│   └── routes/             # API route handlers
+├── k8s-manifests/          # Kubernetes manifests (base + overlays)
+├── terraform/              # Infrastructure module
+├── .github/workflows/      # CI/CD pipelines
+├── Dockerfile              # Multi-stage container build
+├── catalog-info.yaml       # Backstage entity registration
+└── Makefile                # Build/test/deploy targets
+```
+
+## Documentation
+
+- [Platform Engineering Guide](https://docs.developer-portal.dev)
+- [Backstage Catalog](http://localhost:7007/catalog)
+- [ArgoCD Dashboard](http://localhost:8080/dashboards)

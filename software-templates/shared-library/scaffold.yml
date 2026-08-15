@@ -1,0 +1,52 @@
+# =============================================================================
+# Shared TypeScript Library Software Template
+# =============================================================================
+
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: shared-library
+  title: TypeScript Shared Library
+  description: Create a reusable TypeScript package (npm) with Jest testing, semantic versioning, and CI/CD for npm publishing.
+  tags: [typescript, library, npm, shared]
+
+spec:
+  owner: platform-team
+  type: library
+
+  parameters:
+    - title: Library details
+      required: [libraryName, description, owner]
+      properties:
+        libraryName:
+          title: Library Name
+          type: string
+          pattern: '^[a-z][a-z0-9-]*[a-z0-9]$'
+        description:
+          title: Description
+          type: string
+        owner:
+          title: Owner
+          type: string
+
+  steps:
+    - id: fetch-base
+      name: Fetch Base Template
+      action: fetch:template
+      input:
+        url: ./templates/shared-library
+        values:
+          libraryName: ${{ parameters.libraryName }}
+          description: ${{ parameters.description }}
+
+    - id: publish
+      name: Publish to GitHub
+      action: publish:github
+      input:
+        allowedHosts: ['github.com']
+        repoUrl: github.com?owner=tomwire&repo=${{ parameters.libraryName }}
+
+  output:
+    links:
+      - title: Repository
+        url: ${{ steps.publish.output.remoteUrl }}

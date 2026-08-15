@@ -1,0 +1,82 @@
+# =============================================================================
+# React Frontend Software Template
+# =============================================================================
+# Scaffolds a React SPA with Vite, React Query, TypeScript, Storybook,
+# and full CI/CD + K8s deployment manifests.
+# =============================================================================
+
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: react-frontend
+  title: React Frontend Application
+  description: Create a new React SPA frontend application with Vite, TypeScript, Storybook, and full CI/CD pipeline.
+  tags: [react, typescript, frontend, spa]
+
+spec:
+  owner: platform-team
+  type: service
+
+  parameters:
+    - title: Provide basic information
+      required: [serviceName, description, owner]
+      properties:
+        serviceName:
+          title: Application Name
+          type: string
+          description: Unique name for your frontend app (e.g., dashboard-ui)
+          pattern: '^[a-z][a-z0-9-]*[a-z0-9]$'
+        description:
+          title: Description
+          type: string
+          description: Brief description of what this application does
+        owner:
+          title: Owner
+          type: string
+          description: GitHub user or team that owns this application
+
+    - title: Choose features
+      required: []
+      properties:
+        includeStorybook:
+          title: Storybook
+          type: boolean
+          description: Include Storybook for component development
+          default: true
+        includeE2ETests:
+          title: Playwright E2E Tests
+          type: boolean
+          description: Include end-to-end test infrastructure
+          default: false
+
+  steps:
+    - id: fetch-base
+      name: Fetch Base Template
+      action: fetch:template
+      input:
+        url: ./templates/react-frontend
+        values:
+          serviceName: ${{ parameters.serviceName }}
+          description: ${{ parameters.description }}
+          owner: ${{ parameters.owner }}
+
+    - id: publish
+      name: Publish to GitHub
+      action: publish:github
+      input:
+        allowedHosts: ['github.com']
+        repoUrl: github.com?owner=tomwire&repo=${{ parameters.serviceName }}
+
+    - id: register
+      name: Register Service in Catalog
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps.publish.output.repoContentsUrl }}
+        catalogInfoPath: 'catalog-info.yaml'
+
+  output:
+    links:
+      - title: Repository
+        url: ${{ steps.publish.output.remoteUrl }}
+      - title: Open in Catalog
+        to: ${{ steps.register.output.catalogRef }}

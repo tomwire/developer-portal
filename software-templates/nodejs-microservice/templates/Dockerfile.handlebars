@@ -1,0 +1,37 @@
+# =============================================================================
+# Scaffold Output — Dockerfile (for all scaffolded services)
+# =============================================================================
+# Multi-stage build with Distroless final image.
+# This is checked into every scaffolded service repository.
+# =============================================================================
+
+FROM public.ecr.aws/docker/library/node:20-bookworm-slim AS builder
+
+WORKDIR /build
+
+COPY package*.json ./
+RUN npm ci --only=production
+COPY . .
+RUN npm run build 2>/dev/null || true
+
+# ---------------------------------------------------------------------------
+# Runtime — minimal Distroless image (non-root user)
+# ---------------------------------------------------------------------------
+FROM public.ecr.aws/docker/library/gcr.io/distroless/nodejs20-debian12 AS runtime
+
+WORKDIR /app
+
+# Copy built artifacts from builder stage
+COPY --from=builder /build/dist ./dist
+COPY --from=builder /build/package.json .
+COPY --from=builder /build/node_modules ./node_modules
+
+# Run as non-root user (UID 1001)
+USER 1001
+
+EXPOSE <%= port %>
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s \
+    CMD node -e "require('http').get('http://localhost:<%= port %>/healthz', (r) => { process.exit(r.statusCode === 200 ? 0 : 1) })"
+
+CMD ["dist/index.js"]

@@ -1,0 +1,97 @@
+# =============================================================================
+# Developer Portal — ArgoCD Applications
+# =============================================================================
+# Defines ArgoCD Application resources that manage the Backstage deployment
+# and auto-created applications for scaffolded services.
+# =============================================================================
+
+---
+# Backstage instance application (managed by CD workflows)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: backstage-idp-dev
+  namespace: argocd-system
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/tomwire/developer-portal.git
+    targetRevision: main
+    path: k8s-manifests/overlays/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: idp-dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+# Backstage instance application — staging
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: backstage-idp-staging
+  namespace: argocd-system
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/tomwire/developer-portal.git
+    targetRevision: main
+    path: k8s-manifests/overlays/staging
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: idp-staging
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+# Backstage instance application — production
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: backstage-idp-prod
+  namespace: argocd-system
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/tomwire/developer-portal.git
+    targetRevision: main
+    path: k8s-manifests/overlays/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: idp-prod
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: false   # No auto-heal in prod
+    syncOptions:
+      - CreateNamespace=true
+
+---
+# Example: Auto-created Application for a scaffolded service
+# (In production, the scaffolder creates these automatically)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: order-service-api-dev
+  namespace: argocd-system
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/tomwire/order-service-api.git
+    targetRevision: main
+    path: k8s-manifests/overlays/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: idp-dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

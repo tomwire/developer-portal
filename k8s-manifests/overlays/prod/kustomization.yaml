@@ -1,0 +1,85 @@
+# Production overlay — 3 replicas, HPA, strict resource limits
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+namespace: idp-prod
+
+commonLabels:
+  environment: prod
+
+replicas:
+  - name: backstage
+    count: 3
+
+patches:
+  # Production resource limits (maximized)
+  - patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: backstage
+      spec:
+        template:
+          spec:
+            containers:
+              - name: backstage
+                resources:
+                  requests:
+                    cpu: "500m"
+                    memory: "1Gi"
+                  limits:
+                    cpu: "2000m"
+                    memory: "4Gi"
+    target:
+      kind: Deployment
+      name: backstage
+
+  # Production image tag override (from ArgoCD sync)
+  - patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: backstage
+      spec:
+        template:
+          spec:
+            containers:
+              - name: backstage
+                image: public.ecr.aws/tomwire/developer-portal:${{ PROD_IMAGE_TAG | default 'production' }}
+    target:
+      kind: Deployment
+      name: backstage
+
+  # Horizontal Pod Autoscaler (prod only)
+  - patch: |
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: backstage
+        namespace: idp-prod
+      spec:
+        scaleTargetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: backstage
+        minReplicas: 3
+        maxReplicas: 10
+        metrics:
+          - type: Resource
+            resource:
+              name: cpu
+              target:
+                type: Utilization
+                averageUtilization: 70
+          - type: Resource
+            resource:
+              name: memory
+              target:
+                type: Utilization
+                averageUtilization: 80
+    target:
+      kind: Deployment
+      name: backstage

@@ -1,0 +1,42 @@
+# Example: Scaffolded Node.js Service — Catalog Entity
+# This is the catalog-info.yaml that gets created inside every
+# scaffolded service repository. Backstage picks it up automatically
+# and registers the entity in the catalog.
+
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: order-service-api
+  description: Order processing API for the e-commerce platform.
+  annotations:
+    github.com/project-slug: tomwire/order-service-api
+    argocd/app-name: order-service-api-dev
+    backstage.io/techdocs-ref: dir:.
+    kubernetes.io/namespace: idp-dev
+    kubernetes.io/deployment: order-service-api
+spec:
+  type: service
+  lifecycle: production
+  owner: platform-team
+  system: ecommerce-platform
+  providesApis:
+    - order-service-api
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: user-auth-service
+  description: Authentication and authorization microservice.
+  annotations:
+    github.com/project-slug: tomwire/user-auth-service
+    argocd/app-name: user-auth-service-dev
+    kubernetes.io/namespace: idp-dev
+    kubernetes.io/deployment: user-auth-service
+spec:
+  type: service
+  lifecycle: production
+  owner: platform-team
+  system: ecommerce-platform
+  providesApis:
+    - auth-service

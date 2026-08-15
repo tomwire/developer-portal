@@ -1,0 +1,21 @@
+# =============================================================================
+# Scaffold Output — Catalog Entity (catalog-info.yaml)
+# =============================================================================
+# This file gets checked into every scaffolded service repository.
+# Backstage picks it up automatically and registers the entity in the catalog.
+# =============================================================================
+
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: <%= serviceName %>
+  description: "<%= description %>"
+  annotations:
+    github.com/project-slug: tomwire/<%= serviceName %>
+    argocd/app-name: <%= serviceName %>-dev
+    kubernetes.io/namespace: idp-dev
+    kubernetes.io/deployment: <%= serviceName %>
+spec:
+  type: service
+  lifecycle: production
+  owner: <%= owner %>

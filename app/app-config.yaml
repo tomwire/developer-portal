@@ -1,0 +1,128 @@
+# =============================================================================
+# Developer Portal — App Configuration (app-config.yaml)
+# =============================================================================
+# Production config lives in app-config.production.yaml with overrides.
+# This file is the default/dev configuration loaded by Backstage at runtime.
+# =============================================================================
+
+app:
+  title: Developer Portal
+  baseUrl: http://localhost:7007
+  support:
+    url: https://github.com/tomwire/developer-portal/issues
+    items:
+      - title: 📚 Platform Docs
+        icon: docs
+        address: https://docs.developer-portal.dev
+
+organization:
+  name: Developer Portal Platform
+
+backend:
+  # Used for authentication, skip this when testing/developing in isolation.
+  auth:
+    # # add new providers here:
+    # providers:
+    #   github:
+    #     production:
+    #       clientId: ${GITHUB_CLIENT_ID}
+    #       clientSecret: ${GITHUB_CLIENT_SECRET}
+
+  # # Useful for testing; token that grants "full admin" access.
+  auth:
+    rules:
+      - allow: [anonymous]
+
+  # Note that the volume must be mounted in the config file too.
+  cors:
+    origin: http://localhost:3000
+    methods: [GET, HEAD, PATCH, POST, PUT, DELETE]
+    credentials: true
+
+  # This is used for deployment to cloud providers. Configure your cloud provider's credentials here.
+  # See https://backstage.io/docs/auth/ to learn how to configure authentication
+
+catalog:
+  # Overrides the default locations providers can import data from.
+  locations:
+    # Local example template, development only
+    - type: url
+      target: https://github.com/tomwire/developer-portal/blob/main/catalog-info/platform-backstage.yaml
+
+    ## These are following examples of what you can add to your yaml:
+    # # URL to a json or yaml file containing list of locations
+    # - type: url
+    #   target: https://MY_SERVER.com/list.yaml
+    #
+    # # Component-type objects from a GitHub catalog-info.yaml
+    # - type: url
+    #   target: https://github.com/org/repo/blob/main/catalog-info.yaml
+
+    # # Group-type objects from a GitHub org
+    # - type: url
+    #   target: https://github.com/organizations/backstage/settings/memberships
+
+    # # User-type objects from a GitHub user in the org
+    # - type: url
+    #   target: https://github.com/github/users/backstage
+
+    # # Local file as a location
+    # - type: file
+    #   target: ../../catalog-info/my-org-components.yaml
+
+    # # Local directory as a location
+    # - type: file
+    #   target: ../../catalog-info/
+
+  # Directories that should be excluded from catalog import
+  import:
+    entityFilename: catalog-info.yaml
+    pullRequestBranchName: backstage-integ/catalog-import
+
+scaffolder:
+  # See https://backstage.io/docs/features/software-templates/configuration for software template options
+
+  # Defines where template output artifacts are committed
+  defaultAuthor:
+    uid: platform-bot
+    email: bot@developer-portal.dev
+
+  # Default values for scaffolder actions
+  defaultCommitMessage: "✨ Scaffolding new component"
+
+auth:
+  # # For development and testing, you can disable the auth provider:
+  environment: development
+
+  providers:
+    # See https://backstage.io/docs/auth/ to learn how to configure authentication
+    # github:
+    #   provider: idp-github
+    #   target: production
+    #   signIn:
+    #     resolvers:
+    #       - resolver: usernameMatch
+
+    # See https://backstage.io/docs/auth/guest/provider for guest authentication
+    guest:
+      user-info:
+        uid: guest-user
+
+kubernetes:
+  serviceMethod: proxy
+  # liveUrl: https://kubernetes.default.svc.cluster.local
+  # clusterLocatorMethods:
+  #   - type: config
+  #     clusters:
+  #       - name: eks-dev-idp
+  #         url: https://eks-dev-idp.region.amazonaws.com
+  #         authProvider: serviceAccount
+  #         skipTLSVerify: true
+  #         caData: ${KUBERNETES_CA_DATA}
+
+# =============================================================================
+# Scaffolder Templates (local template directory)
+# =============================================================================
+scaffolder:
+  localBackend:
+    enabled: true
